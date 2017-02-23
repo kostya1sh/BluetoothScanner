@@ -1,5 +1,6 @@
 package by.fedoit.bluetoothclient.network;
 
+import by.fedoit.bluetoothclient.dao.ServerResponse;
 import okhttp3.ResponseBody;
 import retrofit2.Call;
 import retrofit2.http.GET;
@@ -92,6 +93,11 @@ public interface DataService {
     @GET("/")
     Call<Void> sendBTData(
             @Query("data") String json
+    );
+
+    @GET("/")
+    Call<ServerResponse> sendBTInitData (
+            @Query("init_data") String json
     );
 
 }

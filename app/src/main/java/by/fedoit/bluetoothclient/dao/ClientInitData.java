@@ -2,28 +2,38 @@ package by.fedoit.bluetoothclient.dao;
 
 import com.google.gson.annotations.SerializedName;
 
-import java.util.List;
-
 /**
- * Created by kostya on 13.02.2017.
+ * Created by kostya on 23.02.2017.
  */
 
-public class ClientData {
+public class ClientInitData {
+
+    @SerializedName("name")
+    private String name;
+
+    @SerializedName("mac")
+    private String mac;
+
     @SerializedName("x")
     private float x;
 
     @SerializedName("y")
     private float y;
 
-    @SerializedName("data")
-    private List<BluetoothDeviceInfo> devices;
-
-    public List<BluetoothDeviceInfo> getDevices() {
-        return devices;
+    public String getMac() {
+        return mac;
     }
 
-    public void setDevices(List<BluetoothDeviceInfo> devices) {
-        this.devices = devices;
+    public void setMac(String mac) {
+        this.mac = mac;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 
     public float getX() {

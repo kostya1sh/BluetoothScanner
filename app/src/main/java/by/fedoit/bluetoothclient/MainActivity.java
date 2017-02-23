@@ -18,6 +18,8 @@ import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
+import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -32,13 +34,17 @@ import java.util.Locale;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
+import butterknife.OnClick;
 import by.fedoit.bluetoothclient.dao.BluetoothDeviceInfo;
 import by.fedoit.bluetoothclient.dao.ClientData;
+import by.fedoit.bluetoothclient.dao.ClientInitData;
+import by.fedoit.bluetoothclient.dao.ServerResponse;
 import by.fedoit.bluetoothclient.network.DataService;
 import by.fedoit.bluetoothclient.network.ServiceGenerator;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
+import retrofit2.Retrofit;
 
 public class MainActivity extends AppCompatActivity implements Callback<Void> {
 
@@ -48,6 +54,26 @@ public class MainActivity extends AppCompatActivity implements Callback<Void> {
 
     private BluetoothAdapter mBluetoothAdapter;
     private List<BluetoothDeviceInfo> foundDevices = new ArrayList<>();
+
+    private Retrofit.Builder retrofitBuilder;
+    private float clientX = -1.0f;
+    private float clientY = -1.0f;
+    private boolean isSavedOnServer = false;
+
+    @BindView(R.id.etServerUrl)
+    EditText etServerUrl;
+
+    @BindView(R.id.etXCoordinate)
+    EditText etXCoordinate;
+
+    @BindView(R.id.etYCoordinate)
+    EditText etYCoordinate;
+
+    @BindView(R.id.btnSave)
+    Button btnSave;
+
+    @BindView(R.id.btnSendInitData)
+    Button btnSendInitData;
 
 
     private BroadcastReceiver discoverStartedReceiver = new BroadcastReceiver() {
@@ -163,7 +189,7 @@ public class MainActivity extends AppCompatActivity implements Callback<Void> {
             int month = calendar.get(Calendar.MONTH);
             int day = calendar.get(Calendar.DAY_OF_MONTH);
             int hour = calendar.get(Calendar.HOUR_OF_DAY);
-            int minute = 00;
+            int minute = calendar.get(Calendar.MINUTE);
             calendar.set(year, month, day, hour, minute);
             setupAlarm(calendar.getTime().getTime());
 
@@ -218,12 +244,15 @@ public class MainActivity extends AppCompatActivity implements Callback<Void> {
 
     public void onAlarmReceived() {
         mBluetoothAdapter.startDiscovery();
+
         new Handler().postDelayed(new Runnable() {
             @Override
             public void run() {
-                mBluetoothAdapter.cancelDiscovery();
+                if (mBluetoothAdapter.isDiscovering()) {
+                    mBluetoothAdapter.cancelDiscovery();
+                }
             }
-        }, 12000);
+        }, 20000);
     }
 
     private void onDiscoverStarted() {
@@ -236,7 +265,7 @@ public class MainActivity extends AppCompatActivity implements Callback<Void> {
             // A Bluetooth device was found
             // Getting device information from the intent
             BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-            int rssi = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE);
+            byte rssi = (byte) intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE);
 
             BluetoothDeviceInfo bluetoothData = new BluetoothDeviceInfo();
             bluetoothData.setTime(new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Calendar.getInstance().getTime().getTime()));
@@ -253,12 +282,19 @@ public class MainActivity extends AppCompatActivity implements Callback<Void> {
 
     private void onDiscoverFinished() {
         showFoundDevices();
-        Gson gson = new GsonBuilder().create();
-        ClientData clientData = new ClientData();
-        clientData.setDevices(foundDevices);
-        DataService dataService = ServiceGenerator.createService(DataService.class);
-        Call<Void> dataCall = dataService.sendBTData(gson.toJson(clientData, ClientData.class));
-        dataCall.enqueue(this);
+        if (retrofitBuilder != null && !foundDevices.isEmpty() && isSavedOnServer) {
+            Gson gson = new GsonBuilder().create();
+            ClientData clientData = new ClientData();
+            clientData.setX(clientX);
+            clientData.setY(clientY);
+            clientData.setDevices(foundDevices);
+            DataService dataService = ServiceGenerator.createService(DataService.class, retrofitBuilder);
+            Call<Void> dataCall = dataService.sendBTData(gson.toJson(clientData, ClientData.class));
+            dataCall.enqueue(this);
+        } else {
+            Toast.makeText(this, "No url specified. Can not send data to server!", Toast.LENGTH_SHORT).show();
+        }
+        foundDevices.clear();
     }
 
 
@@ -269,13 +305,76 @@ public class MainActivity extends AppCompatActivity implements Callback<Void> {
         }
     }
 
+    @OnClick(R.id.btnSave)
+    public void onClickSaveParams() {
+        if (etServerUrl.getText().length() > 0 &&
+                etXCoordinate.getText().length() > 0 &&
+                etYCoordinate.getText().length() > 0) {
+
+            try {
+                clientX = Float.valueOf(etXCoordinate.getText().toString());
+                clientY = Float.valueOf(etYCoordinate.getText().toString());
+            } catch (NumberFormatException nfe) {
+                nfe.printStackTrace();
+                Toast.makeText(this, "X or Y not specified!", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            try {
+                String baseUrl = "http://" + etServerUrl.getText() + "/";
+                retrofitBuilder = ServiceGenerator.createJsonBuilder(baseUrl);
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                retrofitBuilder = null;
+                Toast.makeText(this, "Error in specified URL!", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            Toast.makeText(this, "Params saved!", Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, "Some params was not specified!", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    @OnClick(R.id.btnSendInitData)
+    public void onClickSendInitData() {
+        if (clientX >= 0 && clientY >= 0 && retrofitBuilder != null) {
+            Gson gson = new GsonBuilder().setLenient().create();
+            ClientInitData clientData = new ClientInitData();
+            clientData.setX(clientX);
+            clientData.setY(clientY);
+            clientData.setMac(mBluetoothAdapter.getAddress());
+            clientData.setName(mBluetoothAdapter.getName());
+            DataService dataService = ServiceGenerator.createService(DataService.class, retrofitBuilder);
+            Call<ServerResponse> dataCall = dataService.sendBTInitData(gson.toJson(clientData, ClientInitData.class));
+            dataCall.enqueue(new Callback<ServerResponse>() {
+                @Override
+                public void onResponse(Call<ServerResponse> call, Response<ServerResponse> response) {
+                    if (response.body() != null) {
+                        Toast.makeText(MainActivity.this, response.body().getStatus(), Toast.LENGTH_SHORT).show();
+                        isSavedOnServer = true;
+                    } else {
+                        Toast.makeText(MainActivity.this, "Wrong response status!", Toast.LENGTH_SHORT).show();
+                    }
+                }
+
+                @Override
+                public void onFailure(Call<ServerResponse> call, Throwable t) {
+                    t.printStackTrace();
+                    Toast.makeText(MainActivity.this, "Error while sending init data!", Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+    }
+
     @Override
     public void onFailure(Call<Void> call, Throwable t) {
         t.printStackTrace();
+        Toast.makeText(this, "bt data was not sent!", Toast.LENGTH_SHORT).show();
     }
 
     @Override
     public void onResponse(Call<Void> call, Response<Void> response) {
-        Toast.makeText(this, "bt data sent!", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "bt data sent.", Toast.LENGTH_SHORT).show();
     }
 }
