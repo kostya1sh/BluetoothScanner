@@ -182,15 +182,17 @@ public class MainActivity extends AppCompatActivity implements Callback<Void> {
         }
 
         if (requestCode == REQUEST_SET_BT_DISCOVERABLE) {
-
-
             Calendar calendar = Calendar.getInstance();
             int year = calendar.get(Calendar.YEAR);
             int month = calendar.get(Calendar.MONTH);
             int day = calendar.get(Calendar.DAY_OF_MONTH);
             int hour = calendar.get(Calendar.HOUR_OF_DAY);
             int minute = calendar.get(Calendar.MINUTE);
-            calendar.set(year, month, day, hour, minute);
+            if (minute + 1 > 59) {
+                minute = 0;
+            }
+            calendar.set(year, month, day, hour, minute + 1);
+
             setupAlarm(calendar.getTime().getTime());
 
             // start to search bluetooth devices
